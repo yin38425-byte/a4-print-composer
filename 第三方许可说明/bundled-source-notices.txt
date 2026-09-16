@@ -1,0 +1,86 @@
+/*! *****************************************************************************
+    Copyright (c) Microsoft Corporation. All rights reserved.
+    Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+    this file except in compliance with the License. You may obtain a copy of the
+    License at http://www.apache.org/licenses/LICENSE-2.0
+
+    THIS CODE IS PROVIDED ON AN *AS IS* BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+    KIND, EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY IMPLIED
+    WARRANTIES OR CONDITIONS OF TITLE, FITNESS FOR A PARTICULAR PURPOSE,
+    MERCHANTABLITY OR NON-INFRINGEMENT.
+
+    See the Apache Version 2.0 License for specific language governing permissions
+    and limitations under the License.
+    ***************************************************************************** */
+/*
+     * The `chars`, `lookup`, `encode`, and `decode` members of this file are
+     * licensed under the following:
+     *
+     *     base64-arraybuffer
+     *     https://github.com/niklasvh/base64-arraybuffer
+     *
+     *     Copyright (c) 2012 Niklas von Hertzen
+     *     Licensed under the MIT license.
+     *
+     */
+/*
+     * The `chars`, `lookup`, and `decodeFromBase64` members of this file are
+     * licensed under the following:
+     *
+     *     base64-arraybuffer
+     *     https://github.com/niklasvh/base64-arraybuffer
+     *
+     *     Copyright (c) 2012 Niklas von Hertzen
+     *     Licensed under the MIT license.
+     *
+     */
+/*
+     * Copyright 2012 Mozilla Foundation
+     *
+     * The Stream class contained in this file is a TypeScript port of the
+     * JavaScript Stream class in Mozilla's pdf.js project, made available
+     * under the Apache 2.0 open source license.
+     */
+/*
+     * Copyright 2012 Mozilla Foundation
+     *
+     * The DecodeStream class contained in this file is a TypeScript port of the
+     * JavaScript DecodeStream class in Mozilla's pdf.js project, made available
+     * under the Apache 2.0 open source license.
+     */
+/*
+     * Copyright 2012 Mozilla Foundation
+     *
+     * The Ascii85Stream class contained in this file is a TypeScript port of the
+     * JavaScript Ascii85Stream class in Mozilla's pdf.js project, made available
+     * under the Apache 2.0 open source license.
+     */
+/*
+     * Copyright 2012 Mozilla Foundation
+     *
+     * The AsciiHexStream class contained in this file is a TypeScript port of the
+     * JavaScript AsciiHexStream class in Mozilla's pdf.js project, made available
+     * under the Apache 2.0 open source license.
+     */
+/*
+     * Copyright 1996-2003 Glyph & Cog, LLC
+     *
+     * The flate stream implementation contained in this file is a JavaScript port
+     * of XPDF's implementation, made available under the Apache 2.0 open source
+     * license.
+     */
+/*
+     * Copyright 2012 Mozilla Foundation
+     *
+     * The LZWStream class contained in this file is a TypeScript port of the
+     * JavaScript LZWStream class in Mozilla's pdf.js project, made available
+     * under the Apache 2.0 open source license.
+     */
+/*
+     * Copyright 2012 Mozilla Foundation
+     *
+     * The RunLengthStream class contained in this file is a TypeScript port of the
+     * JavaScript RunLengthStream class in Mozilla's pdf.js project, made available
+     * under the Apache 2.0 open source license.
+     */
+// Originated from pdfkit Copyright (c) 2014 Devon Govett

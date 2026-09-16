@@ -1,0 +1,38 @@
+{
+  "version": "0.2.8",
+  "date": "2026-09-14",
+  "geometry": {
+    "passed": true,
+    "freeAndShiftCases": 1152,
+    "proportionalAnchorCases": 240
+  },
+  "browser": {
+    "errors": [],
+    "passed": true,
+    "tests": [
+      "horizontal",
+      "vertical",
+      "free diagonal",
+      "Shift ratio after stretch",
+      "undo",
+      "Escape",
+      "keyboard width",
+      "swap preserves axes",
+      "PNG resize"
+    ]
+  },
+  "pdf": {
+    "passed": true,
+    "real_downloads": 6,
+    "content_placements_checked": 36,
+    "PDF_and_PNG": true,
+    "A4_landscape": true,
+    "browser_bounds_match_PDF": true,
+    "all_synthetic_source_pages_preserved": true
+  },
+  "legacyScalarPDFs": 10,
+  "stateAppendBlankAndLayoutRegressions": "passed",
+  "intermediateDownloadsRemovedAfterVerification": true,
+  "retainedPDF": "四角自由缩放_实际导出.pdf",
+  "retainedPDFSHA256": "57D75929724633E6F1327E173F8ED339983A6B77DAFBCD22636AD7A8DA59CACC"
+}

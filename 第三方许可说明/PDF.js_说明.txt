@@ -1,0 +1,1 @@
+PDF.js 5.6.205，Mozilla及其贡献者。项目：https://mozilla.github.io/pdf.js/ 。未修改分发的库文件，预览字体与CMap许可证随assets/pdfjs目录提供。所有预览资源本地加载，不需要外网。

@@ -1,0 +1,14 @@
+本工具包含 pdf-lib 1.17.1 的浏览器构建，未修改该第三方构建内容。
+本项目增加了中文界面、文件操作和排版流程，未声称独立开发底层 PDF 引擎。
+
+附带原许可及上游版权声明：
+pdf-lib：MIT
+@pdf-lib/standard-fonts：MIT
+@pdf-lib/upng：MIT
+pako：MIT 与 Zlib
+tslib：本地依赖包声明为 0BSD；浏览器构建内另有 Microsoft Apache-2.0 声明，均保留。
+浏览器构建内另含 base64-arraybuffer、Mozilla、Glyph & Cog、pdfkit 来源声明。
+
+对应说明依据本地实际安装包的 package.json、LICENSE 与 pdf-lib.js 中的声明整理。
+本目录保留原文；本中文索引不修改或替代原许可条文。
+第三方软件的权利以各自许可为准，不适用对本工具界面部分可能另行约定的限制。
