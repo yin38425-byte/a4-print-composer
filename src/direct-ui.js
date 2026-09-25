@@ -1,7 +1,7 @@
 let preparedForAdjustment=null,adjustmentRows=[],sourceRows=[],draftScales={},draftOffsets={},draftAngles={},draftOrder=[],draftLayerOrder=[],appliedState=null,selectedSource=null,dragState=null,undoHistory=[];
 let draftSegments=[];
 let redoHistory=[];
-let appliedLayout=null,appliedOrientation=null;
+let appliedLayout=null,appliedOrientation=null,preparedInputCount=0;
 function scaleValue(map,sequence){return map[sequence]??100;}
 function scaleAxes(value){return typeof value==='number'?{x:value,y:value}:value;}
 function defaultScale(value){const s=scaleAxes(value);return s.x===100&&s.y===100;}
@@ -14,14 +14,16 @@ function rowGeometry(row,pct=scaleValue(draftScales,row.sequence),offset=draftOf
 function changedState(a,b){return JSON.stringify(a)!==JSON.stringify(b);}
 function resetAdjustment(){
   preparedForAdjustment=null;adjustmentRows=[];sourceRows=[];draftScales={};draftOffsets={};draftAngles={};draftOrder=[];draftLayerOrder=[];appliedState=null;selectedSource=null;dragState=null;undoHistory=[];
-  redoHistory=[];appliedLayout=null;appliedOrientation=null;disposeDirectPreview();$('#adjustment').hidden=true;
+  redoHistory=[];appliedLayout=null;appliedOrientation=null;preparedInputCount=0;disposeDirectPreview();$('#adjustment').hidden=true;
 }
 function adjustmentPending(){return !!appliedState&&changedState(editorState(),appliedState);}
-function layoutSettingsPending(){return !!preparedForAdjustment&&(appliedLayout!==Number($('#layout').value)||appliedOrientation!==$('#orientation').value);}
+function fileListPending(){return !!preparedForAdjustment&&preparedInputCount!==inputs.length;}
+function layoutSettingsPending(){return !!preparedForAdjustment&&(fileListPending()||appliedLayout!==Number($('#layout').value)||appliedOrientation!==$('#orientation').value);}
 function sourceAdjusted(id){const p=draftOffsets[id];return !defaultScale(scaleValue(draftScales,id))||!!(p&&(p.x||p.y))||!!draftAngles[id];}
 function syncAdjustmentControls(){
   if(typeof syncSegmentControls==='function')syncSegmentControls();
   const pending=adjustmentPending(),settingsPending=layoutSettingsPending(),row=adjustmentRows.find(r=>r.sequence===selectedSource);
+  $('#build span').textContent=busy?'正在处理…':settingsPending?'更新打印稿':'生成打印稿';
   $('#paper-editor').inert=settingsPending;
   $('#downloads').hidden=!$('#downloads').children.length;
   $('#downloads').style.visibility=busy||pending||settingsPending||!!dragState?'hidden':'';
@@ -144,26 +146,56 @@ function renderPrintDownloads(r,prepared){
 }
 async function generatePrint(adjusting){
   if(busy||dragState||(!adjusting&&!inputs.length)||(adjusting&&!preparedForAdjustment))return;
+  const appending=adjusting&&fileListPending();
   const fitAfterGeneration=!adjusting||layoutSettingsPending();
-  if(!adjusting)clearOutput();setBusy(true);status(adjusting?'正在保存调整后的打印稿…':'正在本地排版…');
+  if(!adjusting)clearOutput();setBusy(true);status(adjusting?'正在更新打印稿…':'正在本地排版…');
   if(!adjusting)uploadNotice('正在处理文档，请稍候','','progress');
   try{
-    const prepared=adjusting?preparedForAdjustment:await prepareMixed(inputs);
-    if(!adjusting)uploadNotice('正在生成打印稿，请稍候','','progress');
-    if(adjusting&&!draftOrder.length){
+    const prepared=appending?[...preparedForAdjustment,...await prepareMixed(inputs.slice(preparedInputCount))]:
+      adjusting?preparedForAdjustment:await prepareMixed(inputs);
+    if(!adjusting||appending)uploadNotice('正在生成打印稿，请稍候','','progress');
+    if(adjusting&&!draftOrder.length&&!appending){
       urls.forEach(URL.revokeObjectURL);urls=[];$('#downloads').replaceChildren();$('#issues').replaceChildren();$('#manifest').replaceChildren();
       adjustmentRows=[];rebuildDirectPapers([]);appliedState=editorState();
       appliedLayout=Number($('#layout').value);appliedOrientation=$('#orientation').value;
       status('已完成','success');return;
     }
-    const r=await InvoicePrototype.arrange(PDFLib,prepared,Number($('#layout').value),{scales:draftScales,offsets:draftOffsets,angles:draftAngles,order:adjusting?draftOrder:undefined,segments:adjusting?effectiveSegments(draftOrder.length):draftSegments,orientation:$('#orientation').value,layerOrder:adjusting?draftLayerOrder:undefined,includePreview:!adjusting,clampOffsets:false});
-    if(!r.bytes){r.rejected.forEach(x=>{const li=document.createElement('li');li.textContent=x.file+'：'+x.reason;$('#issues').append(li);});uploadIssues(r.rejected);status('没有可排版文件，请检查提示','error');return;}
-    if(!adjusting){draftLayerOrder=r.manifest.map(row=>row.sequence);await renderDirectPreview(r.previewBytes,r.manifest);}
-    renderPrintDownloads(r,prepared);preparedForAdjustment=prepared;adjustmentRows=r.manifest;draftOrder=r.manifest.map(r=>r.sequence);if(!adjusting)sourceRows=[...r.manifest];appliedState=editorState();
+    const r=await InvoicePrototype.arrange(PDFLib,prepared,Number($('#layout').value),{
+      scales:draftScales,offsets:draftOffsets,angles:draftAngles,
+      order:adjusting?draftOrder:undefined,
+      segments:appending?draftSegments:adjusting?effectiveSegments(draftOrder.length):draftSegments,
+      orientation:$('#orientation').value,layerOrder:adjusting?draftLayerOrder:undefined,
+      includePreview:!adjusting||appending,appendRemaining:appending?sourceRows.length+1:false,clampOffsets:false
+    });
+    if(!r.bytes){
+      r.rejected.forEach(x=>{const li=document.createElement('li');li.textContent=x.file+'：'+x.reason;$('#issues').append(li);});
+      uploadIssues(r.rejected);status('没有可排版文件，请检查提示','error');return;
+    }
+    if(appending){
+      const oldSourceCount=sourceRows.length;
+      const addedRows=r.manifest.filter(row=>row.sequence>oldSourceCount);
+      const addedIds=addedRows.map(row=>row.sequence);
+      await renderDirectPreview(r.previewBytes,r.manifest,()=>{
+        sourceRows=[...sourceRows,...addedRows];
+        draftOrder=r.manifest.map(row=>row.sequence);
+        draftLayerOrder=[...draftLayerOrder,...addedIds];
+        adjustmentRows=r.manifest;
+        for(const history of [undoHistory,redoHistory])
+          for(const state of history){state.order.push(...addedIds);state.layers.push(...addedIds);}
+      });
+    }else if(!adjusting){
+      draftLayerOrder=r.manifest.map(row=>row.sequence);
+      await renderDirectPreview(r.previewBytes,r.manifest);
+    }
+    renderPrintDownloads(r,prepared);
+    preparedForAdjustment=prepared;preparedInputCount=inputs.length;
+    adjustmentRows=r.manifest;draftOrder=r.manifest.map(row=>row.sequence);
+    if(!adjusting)sourceRows=[...r.manifest];
+    appliedState=editorState();
     appliedLayout=Number($('#layout').value);appliedOrientation=$('#orientation').value;
     $('#adjustment').hidden=false;$('#preview').hidden=true;$('#empty').hidden=true;
     if(fitAfterGeneration)fitPreviewPage();
-    if(!adjusting)uploadIssues(r.rejected);
+    if(!adjusting||appending)uploadIssues(r.rejected);
     status('已完成','success');
   }catch(e){
     if(!adjusting){disposeDirectPreview();$('#empty').hidden=false;uploadNotice('未完成文档处理',e.message);}

@@ -88,8 +88,10 @@
     }
     if(entries.length>MAX_SOURCE_PAGES) throw new Error('本次累计超过'+MAX_SOURCE_PAGES+'页，请分批处理');
     if(!entries.length) return {bytes:null,manifest:[],rejected};
-    const order=options.order===undefined?entries.map((_,i)=>i+1):options.order;
-    if(!Array.isArray(order)||order.length>entries.length||new Set(order).size!==order.length||order.some(id=>!Number.isInteger(id)||id<1||id>entries.length))throw new Error('页顺序无效，请重新生成');
+    const validIds=ids=>Array.isArray(ids)&&ids.length<=entries.length&&new Set(ids).size===ids.length&&!ids.some(id=>!Number.isInteger(id)||id<1||id>entries.length);
+    if(options.order!==undefined&&!validIds(options.order))throw new Error('页顺序无效，请重新生成');
+    const order=options.order===undefined?entries.map((_,i)=>i+1):[...options.order];
+    if(options.appendRemaining){const included=new Set(order);for(let id=options.appendRemaining===true?1:options.appendRemaining;id<=entries.length;id++)if(!included.has(id))order.push(id);}
     if(!order.length)return {bytes:null,manifest:[],rejected};
     // Render the same embedded source pages in the editor; original PDF crop boxes
     // cannot make the canvas and exported PDF use different content coordinates.
@@ -102,9 +104,21 @@
       previewBytes=await out.save();
       while(out.getPageCount())out.removePage(0);
     }
-    const manifest=[],plan=pagePlan(order.length,perPage,options.segments,options.orientation||'portrait');
-    const layerOrder=options.layerOrder??entries.map((_,i)=>i+1);
-    if(!Array.isArray(layerOrder)||layerOrder.length!==entries.length||new Set(layerOrder).size!==entries.length||layerOrder.some(id=>!Number.isInteger(id)||id<1||id>entries.length))throw new Error('层次顺序无效，请重新生成');
+    let segments=options.segments;
+    if(options.appendRemaining&&segments?.length){
+      const active=[];
+      for(const rule of normalizeSegments(segments)){
+        const prior=pagePlan(order.length,perPage,active,options.orientation||'portrait');
+        if(rule.fromSheet>(prior.at(-1)?.outputPage||0))break;
+        active.push(rule);
+      }
+      segments=active;
+    }
+    const manifest=[],plan=pagePlan(order.length,perPage,segments,options.orientation||'portrait');
+    const layerOrder=options.layerOrder===undefined?entries.map((_,i)=>i+1):[...options.layerOrder];
+    if(!validIds(layerOrder))throw new Error('层次顺序无效，请重新生成');
+    if(options.appendRemaining){const included=new Set(layerOrder);for(let id=1;id<=entries.length;id++)if(!included.has(id))layerOrder.push(id);}
+    if(layerOrder.length!==entries.length)throw new Error('层次顺序无效，请重新生成');
     const layerRank=new Map(layerOrder.map((id,i)=>[id,i])),sheetRows=new Map();
     for(let i=0;i<order.length;i++) {
       const sequence=order[i],e=entries[sequence-1],placement=plan[i],slot=placement.slot-1;

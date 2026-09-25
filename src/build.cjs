@@ -1,15 +1,17 @@
 const fs=require('fs'),path=require('path');
-const source=path.dirname(__dirname),dest=process.argv[2];
+const source=path.dirname(__dirname),dest=process.argv[2],version=require(path.join(source,'package.json')).version;
 if(!dest)throw Error('Provide build directory');
 fs.mkdirSync(dest,{recursive:true});
 const pdfLibRoot=path.dirname(require.resolve('pdf-lib/package.json')),pdfjsRoot=path.dirname(require.resolve('pdfjs-dist/package.json'));
 let html=fs.readFileSync(path.join(source,'workbench-shell.html'),'utf8');
 const core=fs.readFileSync(path.join(__dirname,'layout-core.js'),'utf8');
 html=html.replace('/*PDFLIB*/',()=>fs.readFileSync(path.join(pdfLibRoot,'dist/pdf-lib.min.js'),'utf8')).replace('/*CORE*/',()=>core);
-html=html.replaceAll('票据排版','多格式排版').replaceAll('本地预览版','多格式混排 v0.2.26');
+html=html.replaceAll('票据排版','多格式排版').replaceAll('本地预览版','多格式混排 v'+version);
 html=html.replaceAll('文件在当前浏览器处理','文件仅在本机处理');
 html=html.replace(/async function loadFiles\(files\)\{[^\r\n]+/,'');
 html=html.replace("inputs.length?inputs.length+' 个文件':'尚未选择'","'已添加 '+inputs.length+' 个文件'");
+html=html.replace('function show(){clearOutput();','function show(keepOutput=false){if(!keepOutput)clearOutput();');
+html=html.replace('inputs.splice(i,1);show();','const keep=!!preparedForAdjustment&&i>=preparedInputCount;inputs.splice(i,1);show(keep);');
 html=html.replace('<div class="sample-line">','<div id="duplicate-choice" class="duplicate-choice" hidden><p id="duplicate-message" role="status"></p><div><button id="duplicate-skip" type="button">跳过重复文件</button><button id="duplicate-keep" type="button">仍然添加</button></div></div><div class="sample-line">');
 html=html.replace('<div class="spec"><span>内容缩放</span><strong>等比例适配</strong></div>','').replace('<div class="spec"><span>排入顺序</span><strong>文件顺序 → 原始页码</strong></div>','');
 html=html.replace('<p class="hint">完全相同的文件会跳过，不覆盖原文件。</p>','');
@@ -46,7 +48,7 @@ html=html.replace('<div class="canvas">',()=>fs.readFileSync(path.join(__dirname
 html=html.replace('<iframe id="preview"','<div id="paper-editor" class="paper-editor" aria-label="可直接调整的打印文档" hidden></div><iframe id="preview"');
 html=html.replace('</style>',()=>fs.readFileSync(path.join(__dirname,'direct-editor.css'),'utf8')+fs.readFileSync(path.join(__dirname,'swiss-ui.css'),'utf8')+'</style>');
 html=html.replace('等比例适配</strong>','生成后拖动边角调整</strong>');
-html=html.replace('检查预览和未排入文件提示。下载 PDF，用阅读器选择 A4 纸并检查打印缩放。','选择每张纸排2、4、6或8页，以及A4横向或纵向。拖动页面主体可调整位置；当页面中心进入目标页的中央区域，看到“松手交换”后松开即可互换两页，原来的缩放与位置跟随内容。边缘重叠只移动；拖角只缩放。按住 Alt 可越格移动，按 Esc 可取消拖动。拖角时对角固定：横拖改宽，竖拖改高，斜拖同时调整宽高；按住Shift保持当前比例。宽高各可调整25%–1000%，内容可以越过原格子；超出 A4 的部分不会印出。右键可调整叠放顺序。松手自动更新PDF，支持撤销和恢复默认。方向键移动内容，Alt加方向键交换相邻页；角点方向键调整宽高，Shift保持比例，+/-等比缩放。更换文件、版式或重新生成会重置调整。打印时选择对应A4方向与实际大小。');
+html=html.replace('检查预览和未排入文件提示。下载 PDF，用阅读器选择 A4 纸并检查打印缩放。','选择每张纸排2、4、6或8页，以及A4横向或纵向。拖动页面主体可调整位置；当页面中心进入目标页的中央区域，看到“松手交换”后松开即可互换两页，原来的缩放与位置跟随内容。边缘重叠只移动；拖角只缩放。按住 Alt 可越格移动，按 Esc 可取消拖动。拖角时对角固定：横拖改宽，竖拖改高，斜拖同时调整宽高；按住Shift保持当前比例。宽高各可调整25%–1000%，内容可以越过原格子；超出 A4 的部分不会印出。右键可调整叠放顺序。松手自动更新PDF，支持撤销和恢复默认。方向键移动内容，Alt加方向键交换相邻页；角点方向键调整宽高，Shift保持比例，+/-等比缩放。继续添加文件会保留已有调整，点击“更新打印稿”后新页接在末尾；移除文件或清空全部会重置调整。打印时选择对应A4方向与实际大小。');
 const bridge=`
 const conversionCache=new WeakMap();
 async function prepareMixed(files){
@@ -84,6 +86,7 @@ html=html.replace(/<div class="intro"><div><h1>文档拼版<\/h1><p>.*?<\/p><\/d
 html=html.replace('选择文件</h2>','文件</h2>');
 html=html.replaceAll('点击选择，或将文件拖到这里','继续添加文件');
 html=html.replace(/<details class="help-details">.*?<\/details>/s,'');
+html=html.replace('<title>文档拼版 · 本地打印工作台</title>','<title>文档拼版 v'+version+'</title>');
 fs.writeFileSync(path.join(dest,'index.html'),html);
 fs.writeFileSync(path.join(dest,'core.cjs'),core);
 const pdfjs=pdfjsRoot,assets=path.join(dest,'assets','pdfjs');

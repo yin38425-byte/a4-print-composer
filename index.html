@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>文档拼版 · 本地打印工作台</title>
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>文档拼版 v0.2.27</title>
 <style>
 :root{--ink:#20312d;--muted:#51625a;--green:#205c47;--line:#dce3dd;--soft:#eaf1ed}*{box-sizing:border-box}body{margin:0;background:#f3f5f4;color:var(--ink);font:14px/1.65 "Microsoft YaHei","PingFang SC",system-ui,sans-serif}button,input,select{font:inherit}button,select{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}button:focus-visible,a:focus-visible,summary:focus-visible,select:focus-visible{outline:3px solid var(--green);outline-offset:4px}::selection{background:#cce2d4;color:var(--ink)}input{caret-color:var(--green)}*{scrollbar-width:thin;scrollbar-color:#a8bbb0 transparent}a{color:var(--green);text-underline-offset:4px}svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}[hidden]{display:none!important}
 .topbar{height:72px;background:#fff;border-bottom:1px solid var(--line);padding:0 40px;display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{display:flex;align-items:center;gap:12px;font-size:18px;font-weight:700}.brand-mark{background:var(--green);color:#fff;width:34px;height:36px;display:grid;place-items:center;border-radius:6px}.version{font-size:12px;font-weight:400;color:var(--muted);border-left:1px solid var(--line);padding-left:12px}.privacy{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}.privacy svg{width:16px;height:16px}main{max-width:1440px;margin:auto;padding:32px 40px 24px}.intro{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:25px}h1{font-size:28px;line-height:1.35;letter-spacing:-.025em;margin:0 0 9px;font-weight:700}p{margin:0;color:var(--muted)}.intro a{font-size:13px;white-space:nowrap}.workspace{display:grid;grid-template-columns:348px minmax(0,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}.controls{padding:26px;border-right:1px solid var(--line)}h2{font-size:16px;line-height:1.5;margin:0;font-weight:700}.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:8px}.count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
@@ -311,8 +311,10 @@ main{max-width:none;margin:0;padding:0}
     }
     if(entries.length>MAX_SOURCE_PAGES) throw new Error('本次累计超过'+MAX_SOURCE_PAGES+'页，请分批处理');
     if(!entries.length) return {bytes:null,manifest:[],rejected};
-    const order=options.order===undefined?entries.map((_,i)=>i+1):options.order;
-    if(!Array.isArray(order)||order.length>entries.length||new Set(order).size!==order.length||order.some(id=>!Number.isInteger(id)||id<1||id>entries.length))throw new Error('页顺序无效，请重新生成');
+    const validIds=ids=>Array.isArray(ids)&&ids.length<=entries.length&&new Set(ids).size===ids.length&&!ids.some(id=>!Number.isInteger(id)||id<1||id>entries.length);
+    if(options.order!==undefined&&!validIds(options.order))throw new Error('页顺序无效，请重新生成');
+    const order=options.order===undefined?entries.map((_,i)=>i+1):[...options.order];
+    if(options.appendRemaining){const included=new Set(order);for(let id=options.appendRemaining===true?1:options.appendRemaining;id<=entries.length;id++)if(!included.has(id))order.push(id);}
     if(!order.length)return {bytes:null,manifest:[],rejected};
     // Render the same embedded source pages in the editor; original PDF crop boxes
     // cannot make the canvas and exported PDF use different content coordinates.
@@ -325,9 +327,21 @@ main{max-width:none;margin:0;padding:0}
       previewBytes=await out.save();
       while(out.getPageCount())out.removePage(0);
     }
-    const manifest=[],plan=pagePlan(order.length,perPage,options.segments,options.orientation||'portrait');
-    const layerOrder=options.layerOrder??entries.map((_,i)=>i+1);
-    if(!Array.isArray(layerOrder)||layerOrder.length!==entries.length||new Set(layerOrder).size!==entries.length||layerOrder.some(id=>!Number.isInteger(id)||id<1||id>entries.length))throw new Error('层次顺序无效，请重新生成');
+    let segments=options.segments;
+    if(options.appendRemaining&&segments?.length){
+      const active=[];
+      for(const rule of normalizeSegments(segments)){
+        const prior=pagePlan(order.length,perPage,active,options.orientation||'portrait');
+        if(rule.fromSheet>(prior.at(-1)?.outputPage||0))break;
+        active.push(rule);
+      }
+      segments=active;
+    }
+    const manifest=[],plan=pagePlan(order.length,perPage,segments,options.orientation||'portrait');
+    const layerOrder=options.layerOrder===undefined?entries.map((_,i)=>i+1):[...options.layerOrder];
+    if(!validIds(layerOrder))throw new Error('层次顺序无效，请重新生成');
+    if(options.appendRemaining){const included=new Set(layerOrder);for(let id=1;id<=entries.length;id++)if(!included.has(id))layerOrder.push(id);}
+    if(layerOrder.length!==entries.length)throw new Error('层次顺序无效，请重新生成');
     const layerRank=new Map(layerOrder.map((id,i)=>[id,i])),sheetRows=new Map();
     for(let i=0;i<order.length;i++) {
       const sequence=order[i],e=entries[sequence-1],placement=plan[i],slot=placement.slot-1;
@@ -363,7 +377,7 @@ $('#upload-notice-close').onclick=()=>uploadNotice();
 function setBusy(value){busy=value;document.body.classList.toggle('busy',value);['files','layout','orientation','clear'].forEach(id=>$('#'+id).disabled=value);$('#build').disabled=value||!inputs.length;$('#build span').textContent=value?'正在处理…':'生成打印稿';document.querySelectorAll('.remove').forEach(b=>b.disabled=value);syncAdjustmentControls();if(!value&&$('#upload-notice').dataset.state==='progress')uploadNotice();}
 function clearOutput(keepAdjustment=false){if(!keepAdjustment)resetAdjustment();urls.forEach(URL.revokeObjectURL);urls=[];$('#preview').hidden=true;$('#preview').removeAttribute('src');$('#empty').hidden=false;$('#downloads').replaceChildren();$('#issues').replaceChildren();$('#manifest').replaceChildren();$('#manifest-details').hidden=true;if($('#upload-notice').dataset.state==='success')uploadNotice();}
 function updateDiagram(){const n=Number($('#layout').value),orientation=$('#orientation').value,d=InvoicePrototype.paperLayout(n,orientation),s=$('#sheet');$('#preview-caption').textContent='A4 '+(orientation==='landscape'?'横向':'纵向')+' · 每张纸 '+n+' 页内容';s.style.setProperty('--rows',d.rows);s.style.setProperty('--cols',d.cols);s.style.setProperty('--paper-ratio',d.W+'/'+d.H);s.dataset.count=n;s.setAttribute('aria-label',n+'页内容的排版示意');s.replaceChildren();for(let i=1;i<=n;i++){const box=document.createElement('div');box.className='slot';box.textContent='第 '+i+' 页内容';s.append(box);}document.querySelector('.paper-dim').textContent=(orientation==='landscape'?'297 × 210':'210 × 297')+' mm · 版式示意';}
-function show(){clearOutput();$('#list').replaceChildren();inputs.forEach((f,i)=>{const li=document.createElement('li'),type=document.createElement('span'),name=document.createElement('span'),remove=document.createElement('button');type.className='file-type';type.textContent=f.name.split('.').pop().toUpperCase().slice(0,4);name.className='file-name';name.textContent=f.name;remove.className='remove';remove.setAttribute('aria-label','移除 '+f.name);remove.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';remove.onclick=()=>{if(busy)return;inputs.splice(i,1);show();};li.append(type,name,remove);$('#list').append(li);});$('#file-count').textContent='已添加 '+inputs.length+' 个文件';$('#clear').hidden=!inputs.length;$('#choose-label').textContent=inputs.length?'继续添加文件':'继续添加文件';setBusy(busy);status(inputs.length?'已选择 '+inputs.length+' 个文件，可以生成打印稿':'等待选择文件');}
+function show(keepOutput=false){if(!keepOutput)clearOutput();$('#list').replaceChildren();inputs.forEach((f,i)=>{const li=document.createElement('li'),type=document.createElement('span'),name=document.createElement('span'),remove=document.createElement('button');type.className='file-type';type.textContent=f.name.split('.').pop().toUpperCase().slice(0,4);name.className='file-name';name.textContent=f.name;remove.className='remove';remove.setAttribute('aria-label','移除 '+f.name);remove.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>';remove.onclick=()=>{if(busy)return;const keep=!!preparedForAdjustment&&i>=preparedInputCount;inputs.splice(i,1);show(keep);};li.append(type,name,remove);$('#list').append(li);});$('#file-count').textContent='已添加 '+inputs.length+' 个文件';$('#clear').hidden=!inputs.length;$('#choose-label').textContent=inputs.length?'继续添加文件':'继续添加文件';setBusy(busy);status(inputs.length?'已选择 '+inputs.length+' 个文件，可以生成打印稿':'等待选择文件');}
 
 $('#files').onchange=e=>loadFiles(e.target.files);$('#dropzone').ondragover=e=>{e.preventDefault();if(!busy)$('#dropzone').classList.add('dragging');};$('#dropzone').ondragleave=()=>$('#dropzone').classList.remove('dragging');$('#dropzone').ondrop=e=>{e.preventDefault();$('#dropzone').classList.remove('dragging');loadFiles(e.dataTransfer.files);};$('#clear').onclick=()=>{if(busy)return;inputs=[];show();};$('#layout').onchange=()=>{clearOutput();updateDiagram();status(inputs.length?'版式已更改，请重新生成打印稿':'等待选择文件');};
 function renderManifest(rows){const table=document.createElement('table'),caption=document.createElement('caption');caption.textContent='来源页与输出页的对应关系';table.append(caption);const head=document.createElement('thead'),hr=document.createElement('tr');['文件','来源页','输出页','位置','比例'].forEach(text=>{const th=document.createElement('th');th.scope='col';th.textContent=text;hr.append(th);});head.append(hr);table.append(head);const body=document.createElement('tbody');rows.forEach(r=>{const tr=document.createElement('tr');[r.file,r.sourcePage,r.outputPage,r.slot,scaleText({x:r.zoomXPercent,y:r.zoomYPercent})].forEach(text=>{const td=document.createElement('td');td.textContent=text;tr.append(td);});body.append(tr);});table.append(body);$('#manifest').append(table);$('#manifest-details').hidden=false;}
@@ -428,13 +442,13 @@ async function loadFiles(files){
     const known=new Map(inputs.map(f=>[f.digest,f])),unique=[],duplicates=[];
     for(const f of next){if(known.has(f.digest))duplicates.push({file:f,original:known.get(f.digest)});else{unique.push(f);known.set(f.digest,f);}}
     if(inputs.length+unique.length>100)throw Error('添加后不能超过 100 个文件；原有文件已保留。');
-    if(unique.length){inputs=inputs.concat(unique);show();}
+    if(unique.length){inputs=inputs.concat(unique);show(true);}
     uploadNotice();
     let added=unique.length,skipped=0;
     for(const {file,original}of duplicates){
       if(await askDuplicate(file,original)){
         if(inputs.length>=100){skipped++;uploadNotice('未添加重复文件','已达到 100 个文件上限。');continue;}
-        inputs.push(file);show();added++;
+        inputs.push(file);show(true);added++;
       }else skipped++;
     }
     status('已添加 '+added+' 个文件'+(skipped?'，跳过 '+skipped+' 个重复文件':'')+'。');
@@ -559,12 +573,12 @@ async function renderSourcePreview(state,row){
     const blob=await previewStep(new Promise(resolve=>canvas.toBlob(resolve,'image/png')));
     if(!blob)throw Error('无法创建文档预览');
     if(state.cancelled)return;
-    const src=URL.createObjectURL(blob);sourcePreviewUrls.push(src);sourcePreviews.set(row.sequence,src);
-    const node=editorNodes.get(row.sequence);if(node){node.img.src=src;node.img.hidden=false;}
+    const src=URL.createObjectURL(blob);state.urls.push(src);state.previews.set(row.sequence,src);
+    const node=activePreview===state?editorNodes.get(row.sequence):null;if(node){node.img.src=src;node.img.hidden=false;}
   }finally{if(canvas)canvas.width=canvas.height=0;page.cleanup();}
 }
 function queueSourcePreview(state,row){
-  if(state.cancelled||sourcePreviews.has(row.sequence)||state.queued.has(row.sequence))return;
+  if(state.cancelled||state.previews.has(row.sequence)||state.queued.has(row.sequence))return;
   state.queued.add(row.sequence);state.queue.push(row);pumpSourcePreviews(state);
 }
 function pumpSourcePreviews(state){
@@ -577,14 +591,14 @@ function pumpSourcePreviews(state){
 function positionOnPaper(el,box,H=841.89,W=595.28){
   Object.assign(el.style,{left:(box.x/W*100)+'%',top:((H-box.y-box.height)/H*100)+'%',width:(box.width/W*100)+'%',height:(box.height/H*100)+'%'});
 }
-async function renderDirectPreview(bytes,rows){
+async function renderDirectPreview(bytes,rows,onReady){
   if(!pdfRendererPromise)pdfRendererPromise=import('./assets/pdfjs/pdf.min.mjs').catch(e=>{pdfRendererPromise=null;throw e});
   const renderer=await pdfRendererPromise;
   renderer.GlobalWorkerOptions.workerSrc=new URL('./assets/pdfjs/pdf.worker.min.mjs',location.href).href;
   const task=renderer.getDocument({data:bytes.slice(),isEvalSupported:false,stopAtErrors:true,
     cMapUrl:new URL('./assets/pdfjs/cmaps/',location.href).href,cMapPacked:true,
     standardFontDataUrl:new URL('./assets/pdfjs/standard_fonts/',location.href).href,useWasm:false});
-  const state={task,doc:null,queue:[],queued:new Set(),running:0,cancelled:false,observer:null};activePreview=state;
+  const state={task,doc:null,queue:[],queued:new Set(),running:0,cancelled:false,observer:null,urls:[],previews:new Map()};
   try{
     state.doc=await previewStep(task.promise);
     const first=rows.filter(row=>row.outputPage===rows[0].outputPage);let next=0;
@@ -592,6 +606,7 @@ async function renderDirectPreview(bytes,rows){
       while(next<first.length)await renderSourcePreview(state,first[next++]);
     }));
     const failed=workers.find(result=>result.status==='rejected');if(failed)throw failed.reason;
+    disposeDirectPreview();sourcePreviewUrls=state.urls;sourcePreviews=state.previews;activePreview=state;onReady?.();
     rebuildDirectPapers(rows);$('#paper-editor').hidden=false;$('#empty').hidden=true;
     state.observer=new IntersectionObserver(entries=>{
       for(const entry of entries)if(entry.isIntersecting){
@@ -600,7 +615,7 @@ async function renderDirectPreview(bytes,rows){
       }
     },{root:null,rootMargin:'400px 0px'});
     refreshPreviewObserver();
-  }catch(e){disposeDirectPreview();throw e;}
+  }catch(e){state.cancelled=true;state.observer?.disconnect();state.task.destroy().catch(()=>{});state.urls.forEach(URL.revokeObjectURL);if(activePreview===state)disposeDirectPreview();throw e;}
 }
 function rebuildDirectPapers(rows){
   const focused=document.activeElement,focusId=focused?.dataset?.sourceId;
@@ -669,7 +684,7 @@ function paintDirectSource(sequence){
 </script><script>let preparedForAdjustment=null,adjustmentRows=[],sourceRows=[],draftScales={},draftOffsets={},draftAngles={},draftOrder=[],draftLayerOrder=[],appliedState=null,selectedSource=null,dragState=null,undoHistory=[];
 let draftSegments=[];
 let redoHistory=[];
-let appliedLayout=null,appliedOrientation=null;
+let appliedLayout=null,appliedOrientation=null,preparedInputCount=0;
 function scaleValue(map,sequence){return map[sequence]??100;}
 function scaleAxes(value){return typeof value==='number'?{x:value,y:value}:value;}
 function defaultScale(value){const s=scaleAxes(value);return s.x===100&&s.y===100;}
@@ -682,14 +697,16 @@ function rowGeometry(row,pct=scaleValue(draftScales,row.sequence),offset=draftOf
 function changedState(a,b){return JSON.stringify(a)!==JSON.stringify(b);}
 function resetAdjustment(){
   preparedForAdjustment=null;adjustmentRows=[];sourceRows=[];draftScales={};draftOffsets={};draftAngles={};draftOrder=[];draftLayerOrder=[];appliedState=null;selectedSource=null;dragState=null;undoHistory=[];
-  redoHistory=[];appliedLayout=null;appliedOrientation=null;disposeDirectPreview();$('#adjustment').hidden=true;
+  redoHistory=[];appliedLayout=null;appliedOrientation=null;preparedInputCount=0;disposeDirectPreview();$('#adjustment').hidden=true;
 }
 function adjustmentPending(){return !!appliedState&&changedState(editorState(),appliedState);}
-function layoutSettingsPending(){return !!preparedForAdjustment&&(appliedLayout!==Number($('#layout').value)||appliedOrientation!==$('#orientation').value);}
+function fileListPending(){return !!preparedForAdjustment&&preparedInputCount!==inputs.length;}
+function layoutSettingsPending(){return !!preparedForAdjustment&&(fileListPending()||appliedLayout!==Number($('#layout').value)||appliedOrientation!==$('#orientation').value);}
 function sourceAdjusted(id){const p=draftOffsets[id];return !defaultScale(scaleValue(draftScales,id))||!!(p&&(p.x||p.y))||!!draftAngles[id];}
 function syncAdjustmentControls(){
   if(typeof syncSegmentControls==='function')syncSegmentControls();
   const pending=adjustmentPending(),settingsPending=layoutSettingsPending(),row=adjustmentRows.find(r=>r.sequence===selectedSource);
+  $('#build span').textContent=busy?'正在处理…':settingsPending?'更新打印稿':'生成打印稿';
   $('#paper-editor').inert=settingsPending;
   $('#downloads').hidden=!$('#downloads').children.length;
   $('#downloads').style.visibility=busy||pending||settingsPending||!!dragState?'hidden':'';
@@ -812,33 +829,62 @@ function renderPrintDownloads(r,prepared){
 }
 async function generatePrint(adjusting){
   if(busy||dragState||(!adjusting&&!inputs.length)||(adjusting&&!preparedForAdjustment))return;
+  const appending=adjusting&&fileListPending();
   const fitAfterGeneration=!adjusting||layoutSettingsPending();
-  if(!adjusting)clearOutput();setBusy(true);status(adjusting?'正在保存调整后的打印稿…':'正在本地排版…');
+  if(!adjusting)clearOutput();setBusy(true);status(adjusting?'正在更新打印稿…':'正在本地排版…');
   if(!adjusting)uploadNotice('正在处理文档，请稍候','','progress');
   try{
-    const prepared=adjusting?preparedForAdjustment:await prepareMixed(inputs);
-    if(!adjusting)uploadNotice('正在生成打印稿，请稍候','','progress');
-    if(adjusting&&!draftOrder.length){
+    const prepared=appending?[...preparedForAdjustment,...await prepareMixed(inputs.slice(preparedInputCount))]:
+      adjusting?preparedForAdjustment:await prepareMixed(inputs);
+    if(!adjusting||appending)uploadNotice('正在生成打印稿，请稍候','','progress');
+    if(adjusting&&!draftOrder.length&&!appending){
       urls.forEach(URL.revokeObjectURL);urls=[];$('#downloads').replaceChildren();$('#issues').replaceChildren();$('#manifest').replaceChildren();
       adjustmentRows=[];rebuildDirectPapers([]);appliedState=editorState();
       appliedLayout=Number($('#layout').value);appliedOrientation=$('#orientation').value;
       status('已完成','success');return;
     }
-    const r=await InvoicePrototype.arrange(PDFLib,prepared,Number($('#layout').value),{scales:draftScales,offsets:draftOffsets,angles:draftAngles,order:adjusting?draftOrder:undefined,segments:adjusting?effectiveSegments(draftOrder.length):draftSegments,orientation:$('#orientation').value,layerOrder:adjusting?draftLayerOrder:undefined,includePreview:!adjusting,clampOffsets:false});
-    if(!r.bytes){r.rejected.forEach(x=>{const li=document.createElement('li');li.textContent=x.file+'：'+x.reason;$('#issues').append(li);});uploadIssues(r.rejected);status('没有可排版文件，请检查提示','error');return;}
-    if(!adjusting){draftLayerOrder=r.manifest.map(row=>row.sequence);await renderDirectPreview(r.previewBytes,r.manifest);}
-    renderPrintDownloads(r,prepared);preparedForAdjustment=prepared;adjustmentRows=r.manifest;draftOrder=r.manifest.map(r=>r.sequence);if(!adjusting)sourceRows=[...r.manifest];appliedState=editorState();
+    const r=await InvoicePrototype.arrange(PDFLib,prepared,Number($('#layout').value),{
+      scales:draftScales,offsets:draftOffsets,angles:draftAngles,
+      order:adjusting?draftOrder:undefined,
+      segments:appending?draftSegments:adjusting?effectiveSegments(draftOrder.length):draftSegments,
+      orientation:$('#orientation').value,layerOrder:adjusting?draftLayerOrder:undefined,
+      includePreview:!adjusting||appending,appendRemaining:appending?sourceRows.length+1:false,clampOffsets:false
+    });
+    if(!r.bytes){
+      r.rejected.forEach(x=>{const li=document.createElement('li');li.textContent=x.file+'：'+x.reason;$('#issues').append(li);});
+      uploadIssues(r.rejected);status('没有可排版文件，请检查提示','error');return;
+    }
+    if(appending){
+      const oldSourceCount=sourceRows.length;
+      const addedRows=r.manifest.filter(row=>row.sequence>oldSourceCount);
+      const addedIds=addedRows.map(row=>row.sequence);
+      await renderDirectPreview(r.previewBytes,r.manifest,()=>{
+        sourceRows=[...sourceRows,...addedRows];
+        draftOrder=r.manifest.map(row=>row.sequence);
+        draftLayerOrder=[...draftLayerOrder,...addedIds];
+        adjustmentRows=r.manifest;
+        for(const history of [undoHistory,redoHistory])
+          for(const state of history){state.order.push(...addedIds);state.layers.push(...addedIds);}
+      });
+    }else if(!adjusting){
+      draftLayerOrder=r.manifest.map(row=>row.sequence);
+      await renderDirectPreview(r.previewBytes,r.manifest);
+    }
+    renderPrintDownloads(r,prepared);
+    preparedForAdjustment=prepared;preparedInputCount=inputs.length;
+    adjustmentRows=r.manifest;draftOrder=r.manifest.map(row=>row.sequence);
+    if(!adjusting)sourceRows=[...r.manifest];
+    appliedState=editorState();
     appliedLayout=Number($('#layout').value);appliedOrientation=$('#orientation').value;
     $('#adjustment').hidden=false;$('#preview').hidden=true;$('#empty').hidden=true;
     if(fitAfterGeneration)fitPreviewPage();
-    if(!adjusting)uploadIssues(r.rejected);
+    if(!adjusting||appending)uploadIssues(r.rejected);
     status('已完成','success');
   }catch(e){
     if(!adjusting){disposeDirectPreview();$('#empty').hidden=false;uploadNotice('未完成文档处理',e.message);}
     status((adjusting?'更新失败，当前调整已保留：':'未生成可编辑预览：')+e.message,'error');
   }finally{setBusy(false);if(preparedForAdjustment)$('#build span').textContent=layoutSettingsPending()?'更新打印稿':'生成打印稿';}
-}
-</script><script>// Corner handles resize; dragging the page into another page's center swaps on release.
+}</script><script>// Corner handles resize; dragging the page into another page's center swaps on release.
 const SWAP_CENTER_INSET=.2,SWAP_MIN_TRAVEL=.35;
 function startDirectResize(e,row,handle,sx,sy){startEditorDrag(e,row,handle,'resize',sx,sy);}
 function startDirectMove(e,row,handle){startEditorDrag(e,row,handle,'move');}

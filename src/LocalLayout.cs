@@ -14,6 +14,7 @@ public static class LocalLayout {
     static volatile bool running=true;
     static readonly object conversionLock=new object();
     const int MaxBytes=100*1024*1024;
+    const string AppVersion="__APP_VERSION__";
     [STAThread]
     public static int Main(string[] args) {
         string statePath=null, url=null;
@@ -35,8 +36,8 @@ public static class LocalLayout {
             if(headless) {Thread.Sleep(30*60*1000);}
             else {
                 Application.EnableVisualStyles();
-                var form=new Form {Text="文档拼版 · 本地助手",Width=550,Height=240,StartPosition=FormStartPosition.CenterScreen};
-                var text=new Label {Text="本地助手正在运行 · v0.2.24\n\nWord、Excel、PPT、PDF、图片可在浏览器中一起排版。\n处理文件时请保留此窗口；关闭后停止转换服务。",Dock=DockStyle.Fill,Padding=new Padding(20),AutoSize=false};
+                var form=new Form {Text="文档拼版 v"+AppVersion+" · 本地助手",Width=550,Height=240,StartPosition=FormStartPosition.CenterScreen};
+                var text=new Label {Text="本地助手正在运行 · v"+AppVersion+"\n\nWord、Excel、PPT、PDF、图片可在浏览器中一起排版。\n处理文件时请保留此窗口；关闭后停止转换服务。",Dock=DockStyle.Fill,Padding=new Padding(20),AutoSize=false};
                 var address=new TextBox {Text=url,ReadOnly=true,Dock=DockStyle.Bottom};
                 var button=new Button {Text="打开排版页面",Dock=DockStyle.Bottom,Height=38};
                 button.Click+=(s,e)=>OpenBrowser(url); form.Controls.Add(text); form.Controls.Add(address); form.Controls.Add(button);
@@ -80,7 +81,7 @@ public static class LocalLayout {
                 string html=File.ReadAllText(Path.Combine(root,"index.html"),Encoding.UTF8).Replace("__SESSION_TOKEN__",token);
                 Reply(s,200,"text/html; charset=utf-8",Encoding.UTF8.GetBytes(html));return;
             }
-            if(req[0]=="GET" && req[1]=="/"+token+"/health") {Reply(s,200,"application/json",Encoding.UTF8.GetBytes("{\"local\":true,\"version\":\"0.2.24\"}"));return;}
+            if(req[0]=="GET" && req[1]=="/"+token+"/health") {Reply(s,200,"application/json",Encoding.UTF8.GetBytes("{\"local\":true,\"version\":\""+AppVersion+"\"}"));return;}
             string assetPrefix="/"+token+"/assets/pdfjs/";
             if(req[0]=="GET" && req[1].StartsWith(assetPrefix)) {
                 string name=req[1].Substring(assetPrefix.Length);

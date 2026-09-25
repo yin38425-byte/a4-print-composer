@@ -31,13 +31,13 @@ async function loadFiles(files){
     const known=new Map(inputs.map(f=>[f.digest,f])),unique=[],duplicates=[];
     for(const f of next){if(known.has(f.digest))duplicates.push({file:f,original:known.get(f.digest)});else{unique.push(f);known.set(f.digest,f);}}
     if(inputs.length+unique.length>100)throw Error('添加后不能超过 100 个文件；原有文件已保留。');
-    if(unique.length){inputs=inputs.concat(unique);show();}
+    if(unique.length){inputs=inputs.concat(unique);show(true);}
     uploadNotice();
     let added=unique.length,skipped=0;
     for(const {file,original}of duplicates){
       if(await askDuplicate(file,original)){
         if(inputs.length>=100){skipped++;uploadNotice('未添加重复文件','已达到 100 个文件上限。');continue;}
-        inputs.push(file);show();added++;
+        inputs.push(file);show(true);added++;
       }else skipped++;
     }
     status('已添加 '+added+' 个文件'+(skipped?'，跳过 '+skipped+' 个重复文件':'')+'。');

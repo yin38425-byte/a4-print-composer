@@ -1,6 +1,6 @@
 {
   "name": "multiformat-layout",
-  "version": "0.2.26",
+  "version": "0.2.27",
   "private": true,
   "description": "Windows 本地文档拼版工具，支持 Word、Excel、PPT、PDF 和图片混排，2/4/6/8 页与分段排版，可拖动调整并导出 A4 打印稿。",
   "license": "UNLICENSED",

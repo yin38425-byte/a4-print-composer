@@ -45,12 +45,12 @@ async function renderSourcePreview(state,row){
     const blob=await previewStep(new Promise(resolve=>canvas.toBlob(resolve,'image/png')));
     if(!blob)throw Error('无法创建文档预览');
     if(state.cancelled)return;
-    const src=URL.createObjectURL(blob);sourcePreviewUrls.push(src);sourcePreviews.set(row.sequence,src);
-    const node=editorNodes.get(row.sequence);if(node){node.img.src=src;node.img.hidden=false;}
+    const src=URL.createObjectURL(blob);state.urls.push(src);state.previews.set(row.sequence,src);
+    const node=activePreview===state?editorNodes.get(row.sequence):null;if(node){node.img.src=src;node.img.hidden=false;}
   }finally{if(canvas)canvas.width=canvas.height=0;page.cleanup();}
 }
 function queueSourcePreview(state,row){
-  if(state.cancelled||sourcePreviews.has(row.sequence)||state.queued.has(row.sequence))return;
+  if(state.cancelled||state.previews.has(row.sequence)||state.queued.has(row.sequence))return;
   state.queued.add(row.sequence);state.queue.push(row);pumpSourcePreviews(state);
 }
 function pumpSourcePreviews(state){
@@ -63,14 +63,14 @@ function pumpSourcePreviews(state){
 function positionOnPaper(el,box,H=841.89,W=595.28){
   Object.assign(el.style,{left:(box.x/W*100)+'%',top:((H-box.y-box.height)/H*100)+'%',width:(box.width/W*100)+'%',height:(box.height/H*100)+'%'});
 }
-async function renderDirectPreview(bytes,rows){
+async function renderDirectPreview(bytes,rows,onReady){
   if(!pdfRendererPromise)pdfRendererPromise=import('./assets/pdfjs/pdf.min.mjs').catch(e=>{pdfRendererPromise=null;throw e});
   const renderer=await pdfRendererPromise;
   renderer.GlobalWorkerOptions.workerSrc=new URL('./assets/pdfjs/pdf.worker.min.mjs',location.href).href;
   const task=renderer.getDocument({data:bytes.slice(),isEvalSupported:false,stopAtErrors:true,
     cMapUrl:new URL('./assets/pdfjs/cmaps/',location.href).href,cMapPacked:true,
     standardFontDataUrl:new URL('./assets/pdfjs/standard_fonts/',location.href).href,useWasm:false});
-  const state={task,doc:null,queue:[],queued:new Set(),running:0,cancelled:false,observer:null};activePreview=state;
+  const state={task,doc:null,queue:[],queued:new Set(),running:0,cancelled:false,observer:null,urls:[],previews:new Map()};
   try{
     state.doc=await previewStep(task.promise);
     const first=rows.filter(row=>row.outputPage===rows[0].outputPage);let next=0;
@@ -78,6 +78,7 @@ async function renderDirectPreview(bytes,rows){
       while(next<first.length)await renderSourcePreview(state,first[next++]);
     }));
     const failed=workers.find(result=>result.status==='rejected');if(failed)throw failed.reason;
+    disposeDirectPreview();sourcePreviewUrls=state.urls;sourcePreviews=state.previews;activePreview=state;onReady?.();
     rebuildDirectPapers(rows);$('#paper-editor').hidden=false;$('#empty').hidden=true;
     state.observer=new IntersectionObserver(entries=>{
       for(const entry of entries)if(entry.isIntersecting){
@@ -86,7 +87,7 @@ async function renderDirectPreview(bytes,rows){
       }
     },{root:null,rootMargin:'400px 0px'});
     refreshPreviewObserver();
-  }catch(e){disposeDirectPreview();throw e;}
+  }catch(e){state.cancelled=true;state.observer?.disconnect();state.task.destroy().catch(()=>{});state.urls.forEach(URL.revokeObjectURL);if(activePreview===state)disposeDirectPreview();throw e;}
 }
 function rebuildDirectPapers(rows){
   const focused=document.activeElement,focusId=focused?.dataset?.sourceId;
