@@ -1,0 +1,23 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert/strict'),path=require('path');
+const fields=new Map(),$=s=>{if(!fields.has(s))fields.set(s,{value:'',hidden:true});return fields.get(s);};
+const context=vm.createContext({console,$,crypto:require('crypto').webcrypto});
+vm.runInContext(`let busy=false,inputs=[],lastError='',cleared=0;function status(s){lastError=s}function uploadNotice(t='',d=''){lastError=t+d}function setBusy(v){busy=v}function show(){cleared++}`,context);
+vm.runInContext(fs.readFileSync(path.join(__dirname,'file-import.js'),'utf8'),context);
+const file=(name,size=1,content=name)=>({name,size,arrayBuffer:async()=>new TextEncoder().encode(content).buffer});
+const run=s=>vm.runInContext(s,context),load=async batch=>{context.batch=batch;return run('loadFiles(batch)')};
+const choice=async keep=>{for(let i=0;i<200&&!run('duplicateDecision');i++)await new Promise(r=>setTimeout(r,5));assert(run('duplicateDecision'));run(`decideDuplicate(${keep})`);};
+(async()=>{
+ await load([file('first.pdf'),file('second.png')]);assert.equal(run('inputs.length'),2);
+ const before=run('cleared');let pending=load([file('renamed.pdf',1,'first.pdf')]);await choice(false);await pending;
+ assert.equal(run('inputs.length'),2);assert.equal(run('cleared'),before,'skipping all duplicates must preserve print output');
+ pending=load([file('renamed.pdf',1,'first.pdf')]);await choice(true);await pending;assert.equal(run('inputs.length'),3);assert(run('inputs[2].duplicateChecked'));
+ pending=load([file('third.pdf'),file('third-copy.pdf',1,'third.pdf')]);await choice(true);await pending;assert.equal(run('inputs.length'),5);
+ await load([file('first.pdf',1,'different content')]);assert.equal(run('inputs.length'),6,'same name with different bytes must be added');
+ await load([file('oversize.pdf',100*1024*1024+1)]);assert.equal(run('inputs.length'),6);assert.match(run('lastError'),/100.01 MB/);
+ await load([file('boundary.pdf',100*1024*1024)]);assert.equal(run('inputs.length'),7);
+ await load([{name:'broken.pdf',size:1,arrayBuffer:async()=>{throw Error('read')}}]);assert.equal(run('inputs.length'),7);assert.match(run('lastError'),/broken.pdf/);
+ await load(Array.from({length:94},(_,i)=>file('extra'+i)));assert.equal(run('inputs.length'),7,'limit failure preserves existing inputs');
+ const P=require('pdf-lib'),core=require('./layout-core');const d=await P.PDFDocument.create();d.addPage().drawText('original');const bytes=await d.save();
+ const kept=await core.arrange(P,[{name:'a.pdf',bytes,duplicateChecked:true},{name:'copy.pdf',bytes,duplicateChecked:true}]);assert.equal(kept.manifest.length,2);assert.equal(kept.rejected.length,0);
+ console.log('PASS: content-based duplicate choices, same-batch duplicates, renamed duplicates, preserved output, limits, kept duplicates exported');
+})().catch(e=>{console.error(e);process.exitCode=1});

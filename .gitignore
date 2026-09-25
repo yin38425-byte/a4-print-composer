@@ -1,5 +1,9 @@
-*.zip
-*.exe
-.DS_Store
-Thumbs.db
 node_modules/
+dist/
+artifacts/
+__pycache__/
+*.pyc
+*.zip
+*.log
+.env
+.env.*

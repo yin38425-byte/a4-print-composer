@@ -1,0 +1,12 @@
+<section id="adjustment" class="direct-toolbar" aria-label="预览编辑工具栏" hidden>
+  <div class="direct-tools">
+    <button id="direct-undo" class="tool-button icon-button" title="撤销上一次内容调整" aria-label="撤销上一步" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 11l5 4M4 11h9a6 6 0 0 1 6 6"/></svg></button>
+    <button id="direct-redo" class="tool-button icon-button" title="重做刚才撤销的调整" aria-label="重做上一步" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 7 5 4-5 4m5-4h-9a6 6 0 0 0-6 6"/></svg></button>
+    <button id="direct-reset" class="tool-button" title="恢复选中内容的大小、位置和角度" disabled hidden>恢复当前</button>
+    <button id="direct-reset-all" class="tool-button" title="恢复全部内容，保留文件及分段设置" disabled>全部恢复</button>
+    <button id="rotation-reset" class="tool-button" title="仅恢复选中内容的旋转角度" disabled hidden>旋转归零</button>
+    <div class="view-tools"><button id="view-zoom-out" class="tool-button" aria-label="缩小预览">−</button><input id="view-zoom" type="range" min="10" max="200" step="1" value="100" aria-label="预览显示比例，不改变打印尺寸"><input id="view-zoom-value" type="number" min="10" max="200" step="1" value="100" aria-label="预览比例百分数"><span aria-hidden="true">%</span><button id="view-zoom-in" class="tool-button" aria-label="放大预览">＋</button><button id="view-fit" class="tool-button" title="让纸张适应预览区宽度">适应宽度</button><button id="preview-expand" class="tool-button icon-button" aria-label="展开预览" title="展开预览" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H4v6m10 10h6v-6"/></svg></button><button id="preview-close" class="tool-button icon-button" aria-label="收起预览" title="收起预览（Esc）" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h6V4m10 10h-6v6"/></svg></button></div>
+  </div>
+  <div id="downloads" class="download-row" hidden></div>
+  <span id="direct-selected" class="visually-hidden"></span><p id="direct-note" class="visually-hidden" role="status" aria-live="polite"></p><button id="direct-retry" class="text-button" hidden>重试更新</button>
+</section>
