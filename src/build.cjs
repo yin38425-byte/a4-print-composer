@@ -51,29 +51,71 @@ html=html.replace('等比例适配</strong>','生成后拖动边角调整</stron
 html=html.replace('检查预览和未排入文件提示。下载 PDF，用阅读器选择 A4 纸并检查打印缩放。','选择每张纸排2、4、6或8页，以及A4横向或纵向。拖动页面主体可调整位置；当页面中心进入目标页的中央区域，看到“松手交换”后松开即可互换两页，原来的缩放与位置跟随内容。边缘重叠只移动；拖角只缩放。按住 Alt 可越格移动，按 Esc 可取消拖动。拖角时对角固定：横拖改宽，竖拖改高，斜拖同时调整宽高；按住Shift保持当前比例。宽高各可调整25%–1000%，内容可以越过原格子；超出 A4 的部分不会印出。右键可调整叠放顺序。松手自动更新PDF，支持撤销和恢复默认。方向键移动内容，Alt加方向键交换相邻页；角点方向键调整宽高，Shift保持比例，+/-等比缩放。继续添加文件会保留已有调整，点击“更新打印稿”后新页接在末尾；移除文件或清空全部会重置调整。打印时选择对应A4方向与实际大小。');
 const bridge=`
 const conversionCache=new WeakMap();
-async function prepareMixed(files){
- const batchCache=new Map(),out=[];
+const conversionByDigest=new Map();
+const conversionCacheLimit=64*1024*1024;
+let conversionCacheBytes=0;
+function convertedOfficeFile(f,ext){
+ const cached=conversionCache.get(f);
+ if(cached)return cached;
+ const key=ext+':'+f.digest;
+ let entry=conversionByDigest.get(key);
+ if(entry){conversionByDigest.delete(key);conversionByDigest.set(key,entry);}
+ else{
+  entry={size:0,pending:true,promise:null};
+  entry.promise=(async()=>{
+   const response=await fetch('./convert/'+ext,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Local-Token':'__SESSION_TOKEN__'},body:f.bytes});
+   if(!response.ok)throw Error(await response.text());
+   const bytes=await response.arrayBuffer();
+   return ['doc','docx','rtf'].includes(ext)?await trimWordTrailingBlankPages(bytes):{bytes,skipped:0};
+  })();
+  conversionByDigest.set(key,entry);
+  entry.promise.then(result=>{
+   entry.pending=false;entry.size=result.bytes.byteLength;
+   if(conversionByDigest.get(key)===entry)conversionCacheBytes+=entry.size;
+   for(const [oldKey,old] of conversionByDigest){
+    if(conversionByDigest.size<=12&&conversionCacheBytes<=conversionCacheLimit)break;
+    if(old.pending)continue;
+    conversionByDigest.delete(oldKey);conversionCacheBytes-=old.size;
+   }
+  },()=>{if(conversionByDigest.get(key)===entry)conversionByDigest.delete(key);});
+ }
+ conversionCache.set(f,entry.promise);
+ entry.promise.catch(()=>conversionCache.delete(f));
+ return entry.promise;
+}
+function prefetchMixed(files){
+ // Convert while layout options are being chosen; Generate awaits the same promises.
+ if(files.some(f=>/\.(docx?|rtf|xlsx?|pptx?)$/i.test(f.name)))prepareMixed(files,{quiet:true}).catch(()=>{});
+}
+async function prepareMixed(files,{quiet=false}={}){
+ const out=new Array(files.length);
+ const families={word:[],excel:[],ppt:[]};
  for(let i=0;i<files.length;i++){
   const f=files[i],ext=f.name.split('.').pop().toLowerCase();
-  if(!['doc','docx','rtf','xls','xlsx','ppt','pptx'].includes(ext)){out.push(f);continue;}
-  try{
-   let converted=conversionCache.get(f);
-   if(!converted){
-    const hash=f.digest||Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',f.bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');
-    const key=ext+':'+hash;
-    if(!batchCache.has(key)){
-     status('正在自动转换 '+(i+1)+' / '+files.length+'：'+f.name+'，请稍候…');
-     uploadNotice('正在转换 '+(['ppt','pptx'].includes(ext)?'PPT':['xls','xlsx'].includes(ext)?'Excel':'Word')+'，请稍候',f.name+'（'+(i+1)+' / '+files.length+'）','progress');
-     const response=await fetch('./convert/'+ext,{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Local-Token':'__SESSION_TOKEN__'},body:f.bytes});
-     if(!response.ok)throw Error(await response.text());
-     const bytes=await response.arrayBuffer();
-     batchCache.set(key,['doc','docx','rtf'].includes(ext)?await trimWordTrailingBlankPages(bytes):{bytes,skipped:0});
-    }
-    converted=batchCache.get(key);conversionCache.set(f,converted);
-   }
-   out.push({name:f.name,formatName:'converted.pdf',bytes:converted.bytes,skippedTrailingBlankPages:converted.skipped,duplicateChecked:f.duplicateChecked});
-  }catch(e){out.push({name:f.name,bytes:f.bytes,error:'未排入：'+e.message});}
+  const family=['doc','docx','rtf'].includes(ext)?'word':
+   ['xls','xlsx'].includes(ext)?'excel':['ppt','pptx'].includes(ext)?'ppt':null;
+  if(family)families[family].push({f,ext,i});else out[i]=f;
  }
+ const total=Object.values(families).reduce((n,group)=>n+group.length,0);
+ const types=Object.entries(families).filter(([,group])=>group.length)
+  .map(([family])=>({word:'Word',excel:'Excel',ppt:'PPT'})[family]);
+ let completed=0;
+ const report=()=>{
+  if(quiet)return;
+  status('正在转换文件 '+completed+' / '+total+'，请稍候…');
+  uploadNotice('正在'+(types.length>1?'并行转换 ':'转换 ')+types.join('、')+'，请稍候','已完成 '+completed+' / '+total,'progress');
+ };
+ async function convert({f,ext,i}){
+  try{
+   const converted=await convertedOfficeFile(f,ext);
+   out[i]={name:f.name,formatName:'converted.pdf',bytes:converted.bytes,skippedTrailingBlankPages:converted.skipped,duplicateChecked:f.duplicateChecked};
+  }catch(e){out[i]={name:f.name,bytes:f.bytes,error:'未排入：'+e.message};}
+  finally{completed++;report();}
+ }
+ if(total)report();
+ await Promise.all(Object.values(families).map(async group=>{
+  for(const item of group)await convert(item);
+ }));
  return out;
 }
 `;

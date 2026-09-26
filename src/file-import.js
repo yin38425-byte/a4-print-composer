@@ -34,13 +34,15 @@ async function loadFiles(files){
     if(unique.length){inputs=inputs.concat(unique);show(true);}
     uploadNotice();
     let added=unique.length,skipped=0;
+    const addedFiles=[...unique];
     for(const {file,original}of duplicates){
       if(await askDuplicate(file,original)){
         if(inputs.length>=100){skipped++;uploadNotice('未添加重复文件','已达到 100 个文件上限。');continue;}
-        inputs.push(file);show(true);added++;
+        inputs.push(file);show(true);added++;addedFiles.push(file);
       }else skipped++;
     }
     status('已添加 '+added+' 个文件'+(skipped?'，跳过 '+skipped+' 个重复文件':'')+'。');
+    if(typeof prefetchMixed==='function')prefetchMixed(addedFiles);
   }catch(err){uploadNotice('本次文件未添加',err.message+'\n原有文件和已生成的打印稿已保留。');status(err.message,'error');}
   finally{$('#files').value='';setBusy(false);}
 }

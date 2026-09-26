@@ -6,13 +6,18 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 public static class LocalLayout {
     static TcpListener listener;
     static string root, token, origin;
     static volatile bool running=true;
-    static readonly object conversionLock=new object();
+    // Each Office family has its own COM server. Keep conversions within one
+    // family serialized while allowing mixed Word/Excel/PowerPoint batches.
+    static readonly object wordConversionLock=new object();
+    static readonly object sheetConversionLock=new object();
+    static readonly object slideConversionLock=new object();
     const int MaxBytes=100*1024*1024;
     const string AppVersion="__APP_VERSION__";
     [STAThread]
@@ -97,10 +102,14 @@ public static class LocalLayout {
             int length;string len;
             if(!fields.TryGetValue("Content-Length",out len)||!int.TryParse(len,out length)||length<1||length>MaxBytes){Fail(s,413,"文件应为1字节至100MB");return;}
             var data=new byte[length];int read=0;while(read<length){int n=s.Read(data,read,length-read);if(n==0)throw new IOException("文件未传完");read+=n;}
-            if(!Monitor.TryEnter(conversionLock)){Fail(s,409,"正在转换另一份文档，请完成后重试");return;}
-            try{Reply(s,200,"application/pdf",ConvertDocument(data,ext));}finally{Monitor.Exit(conversionLock);}
+            object conversionLock=ext=="ppt"||ext=="pptx"?slideConversionLock:
+                ext=="xls"||ext=="xlsx"?sheetConversionLock:wordConversionLock;
+            // A second file of the same family waits for Office to finish closing.
+            // The first PDF can already be delivered while that cleanup continues.
+            if(!Monitor.TryEnter(conversionLock,300000)){Fail(s,409,"同类型文档仍在转换，请稍后重试");return;}
+            try{ConvertDocument(data,ext,pdf=>Reply(s,200,"application/pdf",pdf));}finally{Monitor.Exit(conversionLock);}
         }catch(Exception e){try{Fail(s,422,e.Message);}catch{}}}}
-    static byte[] ConvertDocument(byte[] data,string ext) {
+    static void ConvertDocument(byte[] data,string ext,Action<byte[]> onReady) {
         string job=Path.Combine(Path.GetTempPath(),"local-layout-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(job);
         try {
             string input=Path.Combine(job,"input."+ext), output=Path.Combine(job,"output.pdf");File.WriteAllBytes(input,data);
@@ -109,11 +118,20 @@ public static class LocalLayout {
             string engine=presentation?(Type.GetTypeFromProgID("PowerPoint.Application")!=null?"PowerPoint.Application":"KWPP.Application"):spreadsheet?(Type.GetTypeFromProgID("Excel.Application")!=null?"Excel.Application":"KET.Application"):(Type.GetTypeFromProgID("Word.Application")!=null?"Word.Application":"KWPS.Application");
             var info=new ProcessStartInfo(Path.Combine(root,"OfficeConvert.exe"),"\""+input+"\" \""+output+"\" "+engine) {UseShellExecute=false,CreateNoWindow=true,RedirectStandardError=true,RedirectStandardOutput=true};
             using(var process=Process.Start(info)) {
-                if(!process.WaitForExit(300000)){process.Kill();throw new Exception("文档转换超时，未生成结果。请检查是否有办公软件弹窗，或文档过于复杂。");}
-                string error=process.StandardError.ReadToEnd();
-                if(process.ExitCode!=0)throw new Exception(String.IsNullOrWhiteSpace(error)?"办公软件转换失败，请确认相应桌面版可正常使用":error);
+                var ready=Task.Factory.StartNew(()=>process.StandardOutput.ReadLine());
+                if(!ready.Wait(300000)){process.Kill();throw new Exception("文档转换超时，未生成结果。请检查是否有办公软件弹窗，或文档过于复杂。");}
+                if(ready.Result!="OK") {
+                    process.WaitForExit();
+                    string error=process.StandardError.ReadToEnd();
+                    throw new Exception(String.IsNullOrWhiteSpace(error)?"办公软件转换失败，请确认相应桌面版可正常使用":error);
+                }
+                // The export is complete, but Office shutdown can take many seconds,
+                // especially for presentations with embedded media. Send the PDF now.
+                try {onReady(File.ReadAllBytes(output));}
+                finally {
+                    try {if(!process.WaitForExit(300000))process.Kill();}catch{}
+                }
             }
-            return File.ReadAllBytes(output);
         } finally {try{Directory.Delete(job,true);}catch{}}
     }
 }
